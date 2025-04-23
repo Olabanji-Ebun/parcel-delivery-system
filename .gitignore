@@ -1,0 +1,26 @@
+# Node modules
+node_modules/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# dotenv environment files
+.env
+
+# Editor/IDE folders
+.vscode/
+.idea/
+
+# OS-generated files
+.DS_Store
+Thumbs.db
+
+# Optional: exclude coverage reports, build artifacts
+coverage/
+dist/
+
+# Optional: local database or uploads (if any)
+*.sqlite
+uploads/

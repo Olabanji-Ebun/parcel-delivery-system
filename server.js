@@ -8,8 +8,14 @@ app.use(express.json());
 require('dotenv').config();
 
 const corsOptions = {
-    origin: 'https://olabanji-ebun.github.io/parcel-delivery-system/', // frontend URL
-    optionsSuccessStatus: 200
+    origin: [
+        'https://olabanji-ebun.github.io/parcel-delivery-system/',
+        'http://localhost:3000', // local URL
+    ],//frontend URL
+    optionsSuccessStatus: 200,
+    methods: ['GET', 'POST'],
+    allowedHeaders: ['Content-Type'],
+    optionsucc
   };
   app.use(cors(corsOptions));
 

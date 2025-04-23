@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: parcel-backend
+    env: node
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: DB_HOST
+        value: localhost  # Or your remote MySQL host if not using local
+      - key: DB_USER
+        value: root       # Or your specific MySQL username
+      - key: DB_PASSWORD
+        value: A1&2y28o0#6ebu%n # Plain text password
+      - key: DB_NAME
+        value: parcel_delivery

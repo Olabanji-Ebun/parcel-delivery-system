@@ -9,7 +9,7 @@ require('dotenv').config();
 
 const corsOptions = {
     origin: [
-        'https://olabanji-ebun.github.io/parcel-delivery-system/',
+        'https://olabanji-ebun.github.io',
         'http://localhost:3000', // local URL
     ],//frontend URL
     optionsSuccessStatus: 200,

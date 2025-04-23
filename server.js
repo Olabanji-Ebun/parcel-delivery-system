@@ -7,6 +7,12 @@ app.use(cors());
 app.use(express.json());
 require('dotenv').config();
 
+const corsOptions = {
+    origin: 'https://olabanji-ebun.github.io/parcel-delivery-system/', // frontend URL
+    optionsSuccessStatus: 200
+  };
+  app.use(cors(corsOptions));
+
 const db = mysql.createConnection({
     host: 'localhost',
     user: 'root',

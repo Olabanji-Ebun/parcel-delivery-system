@@ -1,144 +1,260 @@
 const express = require('express');
-const mysql = require('mysql2');
+const mysql = require('mysql2/promise'); // Using promise-based API
 const cors = require('cors');
-
-const app = express();
-app.use(express.json());
 require('dotenv').config();
 
-// Updated CORS configuration
-const corsOptions = {
-    origin: [
-        'https://olabanji-ebun.github.io',
-        'http://localhost:3000',
-    ],
-    optionsSuccessStatus: 200,
-    methods: ['GET', 'POST'],
-    allowedHeaders: ['Content-Type'],
-};
-app.use(cors(corsOptions));
+const app = express();
 
-// Connection pool with SSL support
-const pool = mysql.createPool({
-    host: process.env.DB_HOST || 'localhost',
-    user: process.env.DB_USER || 'root',
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME || 'parcel_delivery',
-    waitForConnections: true,
-    connectionLimit: 10,
-    queueLimit: 0,
-    ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : null
-});
+// Enhanced CORS configuration
+const allowedOrigins = [
+    'https://olabanji-ebun.github.io',
+    'http://localhost:3000'
+];
 
-// Connection event listeners for debugging
-pool.on('connection', (connection) => {
-    console.log('New database connection established');
-});
-
-pool.on('error', (err) => {
-    console.error('Database pool error:', err);
-    if (err.code === 'PROTOCOL_CONNECTION_LOST') {
-        console.error('Database connection was closed.');
-    }
-});
-
-// Health check endpoint
-app.get('/health', (req, res) => {
-    pool.query('SELECT 1', (err) => {
-        if (err) {
-            console.error('Health check failed:', err);
-            return res.status(500).json({ status: 'unhealthy', error: err.message });
-        }
-        res.status(200).json({ status: 'healthy' });
-    });
-});
-
-// Parcel registration endpoint
-app.post('/register-parcel', (req, res) => {
-    console.log('Register parcel request:', req.body);
-    const { id, name, description } = req.body;
-    
-    if (!id || !name) {
-        return res.status(400).json({ error: 'Missing required fields' });
-    }
-
-    const query = 'INSERT INTO parcels (id, name, description) VALUES (?, ?, ?)';
-    pool.query(query, [id, name, description], (err, result) => {
-        if (err) {
-            console.error('Database error:', err);
-            return res.status(500).json({ 
-                error: 'Database operation failed',
-                message: err.message || 'Unknown database error',
-                code: err.code,
-                sqlMessage: err.sqlMessage
-            });
-        }
-        console.log('Parcel registered successfully:', { id, name });
-        res.status(200).json({ 
-            message: 'Parcel registered successfully!',
-            parcelId: id
-        });
-    });
-});
-
-// Parcel tracking endpoint
-app.get('/track-parcel/:id', (req, res) => {
-    const parcelID = req.params.id;
-    console.log('Tracking request for parcel:', parcelID);
-    
-    const query = 'SELECT * FROM parcels WHERE id = ?';
-    pool.query(query, [parcelID], (err, results) => {
-        if (err) {
-            console.error('Database error details:', err);
-            return res.status(500).json({ 
-                error: 'Database operation failed',
-                message: err.message || 'Unknown database error',
-                code: err.code,
-                sqlMessage: err.sqlMessage
-            });
-        }
-        
-        if (results.length > 0) {
-            console.log('Parcel found:', results[0]);
-            res.status(200).json(results[0]);
+app.use(cors({
+    origin: function(origin, callback) {
+        if (!origin || allowedOrigins.includes(origin)) {
+            callback(null, true);
         } else {
-            console.log('Parcel not found:', parcelID);
-            res.status(404).json({ 
-                message: 'Parcel not found',
-                suggestion: 'Please check the tracking number and try again'
-            });
+            console.warn('Blocked CORS request from:', origin);
+            callback(new Error('Not allowed by CORS'));
         }
-    });
-});
+    },
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true
+}));
 
-// Error handling middleware
-app.use((err, req, res, next) => {
-    console.error('Unhandled error:', err);
-    res.status(500).json({ 
-        error: 'Internal Server Error',
-        message: 'Something went wrong on our end'
-    });
-});
+app.use(express.json());
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-    console.log('Database configuration:', {
+// Database configuration with connection retry
+const createPool = () => {
+    const pool = mysql.createPool({
         host: process.env.DB_HOST || 'localhost',
         user: process.env.DB_USER || 'root',
-        database: process.env.DB_NAME || 'parcel_delivery'
+        password: process.env.DB_PASSWORD,
+        database: process.env.DB_NAME || 'parcel_delivery',
+        waitForConnections: true,
+        connectionLimit: 10,
+        queueLimit: 0,
+        connectTimeout: 10000,
+        ssl: process.env.DB_SSL === 'true' ? { 
+            rejectUnauthorized: false 
+        } : null
+    });
+
+    pool.on('connection', (connection) => {
+        console.log('New DB connection established. Thread ID:', connection.threadId);
+    });
+
+    pool.on('error', (err) => {
+        console.error('Database pool error:', {
+            code: err.code,
+            message: err.message,
+            sqlState: err.sqlState,
+            stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+        });
+        
+        if (err.code === 'PROTOCOL_CONNECTION_LOST') {
+            console.log('Attempting to reconnect to database...');
+            setTimeout(createPool, 2000);
+        }
+    });
+
+    return pool;
+};
+
+let pool = createPool();
+
+// Enhanced health check
+app.get('/health', async (req, res) => {
+    try {
+        const [rows] = await pool.query('SELECT 1 AS db_status');
+        const [tables] = await pool.query('SHOW TABLES');
+        
+        res.status(200).json({
+            status: 'healthy',
+            database: {
+                connection: true,
+                tables: tables.length,
+                version: rows[0].db_status
+            },
+            server: {
+                uptime: process.uptime(),
+                memory: process.memoryUsage()
+            }
+        });
+    } catch (err) {
+        console.error('Health check failed:', err);
+        res.status(500).json({
+            status: 'unhealthy',
+            error: {
+                code: err.code,
+                message: err.message,
+                sqlState: err.sqlState
+            },
+            config: {
+                host: pool.config.connectionConfig.host,
+                user: pool.config.connectionConfig.user,
+                database: pool.config.connectionConfig.database
+            }
+        });
+    }
+});
+
+// Parcel registration with validation
+app.post('/register-parcel', async (req, res) => {
+    try {
+        const { id, name, description } = req.body;
+        
+        // Enhanced validation
+        if (!id || !name) {
+            return res.status(400).json({
+                error: 'ValidationError',
+                message: 'Missing required fields',
+                required: ['id', 'name'],
+                received: { id, name, description }
+            });
+        }
+
+        if (id.length > 50 || name.length > 100) {
+            return res.status(400).json({
+                error: 'ValidationError',
+                message: 'Field length exceeded',
+                limits: {
+                    id: 50,
+                    name: 100
+                }
+            });
+        }
+
+        const [result] = await pool.execute(
+            'INSERT INTO parcels (id, name, description) VALUES (?, ?, ?)',
+            [id, name, description]
+        );
+
+        console.log('Parcel registered:', { id, name });
+        res.status(201).json({
+            success: true,
+            message: 'Parcel registered successfully',
+            parcelId: id,
+            insertedId: result.insertId
+        });
+    } catch (err) {
+        console.error('Registration error:', err);
+        
+        if (err.code === 'ER_DUP_ENTRY') {
+            return res.status(409).json({
+                error: 'DuplicateError',
+                message: 'Parcel ID already exists',
+                suggestion: 'Please use a different tracking number'
+            });
+        }
+
+        res.status(500).json({
+            error: 'DatabaseError',
+            message: err.message || 'Failed to register parcel',
+            code: err.code,
+            sqlState: err.sqlState
+        });
+    }
+});
+
+// Enhanced tracking endpoint
+app.get('/track-parcel/:id', async (req, res) => {
+    try {
+        const parcelID = req.params.id;
+        
+        if (!parcelID || parcelID.length > 50) {
+            return res.status(400).json({
+                error: 'ValidationError',
+                message: 'Invalid parcel ID',
+                maxLength: 50
+            });
+        }
+
+        const [results] = await pool.execute(
+            'SELECT * FROM parcels WHERE id = ?',
+            [parcelID]
+        );
+
+        if (results.length === 0) {
+            return res.status(404).json({
+                error: 'NotFound',
+                message: 'Parcel not found',
+                trackingNumber: parcelID,
+                suggestion: 'Please verify the tracking number'
+            });
+        }
+
+        res.status(200).json(results[0]);
+    } catch (err) {
+        console.error('Tracking error:', err);
+        res.status(500).json({
+            error: 'DatabaseError',
+            message: err.message || 'Failed to track parcel',
+            code: err.code,
+            sqlState: err.sqlState
+        });
+    }
+});
+
+// 404 handler
+app.use((req, res) => {
+    res.status(404).json({
+        error: 'NotFound',
+        message: 'Endpoint not found',
+        path: req.path
     });
 });
 
-// Handle process termination
-process.on('SIGTERM', () => {
-    console.log('SIGTERM received. Closing server and database pool...');
-    pool.end();
-    process.exit(0);
+// Error handler
+app.use((err, req, res, next) => {
+    console.error('Server error:', err);
+    res.status(500).json({
+        error: 'ServerError',
+        message: 'Internal server error',
+        ...(process.env.NODE_ENV === 'development' && {
+            stack: err.stack
+        })
+    });
 });
 
-process.on('SIGINT', () => {
-    console.log('SIGINT received. Closing server and database pool...');
-    pool.end();
-    process.exit(0);
+// Server startup
+const PORT = process.env.PORT || 3000;
+const server = app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+    console.log('Environment:', process.env.NODE_ENV || 'development');
+    console.log('Database config:', {
+        host: process.env.DB_HOST,
+        database: process.env.DB_NAME,
+        user: process.env.DB_USER,
+        ssl: process.env.DB_SSL
+    });
 });
+
+// Graceful shutdown
+const shutdown = async () => {
+    console.log('Shutting down gracefully...');
+    
+    try {
+        await pool.end();
+        console.log('Database pool closed');
+        
+        server.close(() => {
+            console.log('Server closed');
+            process.exit(0);
+        });
+        
+        setTimeout(() => {
+            console.error('Force shutdown after timeout');
+            process.exit(1);
+        }, 10000);
+    } catch (err) {
+        console.error('Shutdown error:', err);
+        process.exit(1);
+    }
+};
+
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);

@@ -2,18 +2,26 @@ document.addEventListener('DOMContentLoaded', function() {
     const parcelForm = document.getElementById('parcel-form');
     const trackParcelForm = document.getElementById('track-parcel-form');
 
-    parcelForm.addEventListener('submit', submitParcel);
-    trackParcelForm.addEventListener('submit', trackParcel);
+    if (parcelForm) parcelForm.addEventListener('submit', submitParcel);
+    if (trackParcelForm) trackParcelForm.addEventListener('submit', trackParcel);
 });
 
-// For submission
+// Enhanced submission function
 async function submitParcel(event) {
     event.preventDefault();
+    const submitBtn = event.target.querySelector('button[type="submit"]');
+    const originalBtnText = submitBtn.textContent;
     
     try {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Processing...';
+        
         const response = await fetch('https://parcel-delivery-system-zzsz.onrender.com/register-parcel', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
             body: JSON.stringify({
                 id: document.getElementById('parcel-id').value.trim(),
                 name: document.getElementById('parcel-name').value.trim(),
@@ -21,45 +29,76 @@ async function submitParcel(event) {
             })
         });
   
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.message || 'Failed to register parcel');
-        }
         const data = await response.json();
-        alert('Success: ' + data.message);
+        
+        if (!response.ok) {
+            throw new Error(data.message || data.error || 'Failed to register parcel');
+        }
+        
+        alert(`Success! Parcel ID: ${data.parcelId}`);
         event.target.reset();
     } catch (error) {
         console.error('Submission error:', error);
-        alert('Failed to register parcel: ' + error.message);
+        alert(`Error: ${error.message}`);
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = originalBtnText;
     }
 }
 
-// For tracking
+// Enhanced tracking function
 async function trackParcel(event) {
     event.preventDefault();
     const trackingNumber = document.getElementById('tracking-number').value.trim();
     const resultDiv = document.getElementById('tracking-result');
-    resultDiv.innerHTML = 'Loading...';
-
+    const trackBtn = event.target.querySelector('button[type="submit"]');
+    const originalBtnText = trackBtn.textContent;
+    
     try {
-        const response = await fetch(`https://parcel-delivery-system-zzsz.onrender.com/track-parcel/${trackingNumber}`);
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.message || 'Failed to track parcel');
-        }
+        trackBtn.disabled = true;
+        trackBtn.textContent = 'Searching...';
+        resultDiv.innerHTML = '<div class="loading">Loading parcel information...</div>';
+        
+        const response = await fetch(`https://parcel-delivery-system-zzsz.onrender.com/track-parcel/${trackingNumber}`, {
+            headers: { 'Accept': 'application/json' }
+        });
+        
         const data = await response.json();
-        if (data.message) {
-            resultDiv.innerHTML = `<p>${data.message}</p>`;
+        
+        if (!response.ok) {
+            throw new Error(data.message || data.error || 'Failed to track parcel');
+        }
+        
+        if (data.message && data.message === 'Parcel not found') {
+            resultDiv.innerHTML = `
+                <div class="not-found">
+                    <p>Parcel not found</p>
+                    <p>Tracking number: ${trackingNumber}</p>
+                    <p>Please verify the number and try again</p>
+                </div>
+            `;
         } else {
             resultDiv.innerHTML = `
-                <p><strong>Parcel Found:</strong></p>
-                <p>ID: ${data.id}</p>
-                <p>Name: ${data.name}</p>
-                <p>Description: ${data.description || 'N/A'}</p>
+                <div class="parcel-info">
+                    <h3>Parcel Details</h3>
+                    <p><strong>Tracking Number:</strong> ${data.id}</p>
+                    <p><strong>Recipient:</strong> ${data.name}</p>
+                    <p><strong>Description:</strong> ${data.description || 'Not provided'}</p>
+                    <p class="status">Status: In transit</p>
+                </div>
             `;
         }
     } catch (error) {
         console.error('Tracking error:', error);
-        resultDiv.innerHTML = `<p>Tracking failed: ${error.message}</p>`;
+        resultDiv.innerHTML = `
+            <div class="error">
+                <p>Error tracking parcel</p>
+                <p>${error.message}</p>
+                <p>Please try again later</p>
+            </div>
+        `;
+    } finally {
+        trackBtn.disabled = false;
+        trackBtn.textContent = originalBtnText;
     }
 }

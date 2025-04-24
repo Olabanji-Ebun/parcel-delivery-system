@@ -3,7 +3,6 @@ const mysql = require('mysql2');
 const cors = require('cors');
 
 const app = express();
-app.use(cors());
 app.use(express.json());
 require('dotenv').config();
 
@@ -19,15 +18,16 @@ const corsOptions = {
 };
 app.use(cors(corsOptions));
 
-// Replaced single connection with connection pool
+// Connection pool with SSL support
 const pool = mysql.createPool({
-    host: process.env.DB_HOST || 'localhost', // Added environment variable
+    host: process.env.DB_HOST || 'localhost',
     user: process.env.DB_USER || 'root',
     password: process.env.DB_PASSWORD,
     database: process.env.DB_NAME || 'parcel_delivery',
     waitForConnections: true,
     connectionLimit: 10,
-    queueLimit: 0
+    queueLimit: 0,
+    ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : null
 });
 
 // Connection event listeners for debugging
@@ -53,7 +53,7 @@ app.get('/health', (req, res) => {
     });
 });
 
-// Parcel registration endpoint with improved logging
+// Parcel registration endpoint
 app.post('/register-parcel', (req, res) => {
     console.log('Register parcel request:', req.body);
     const { id, name, description } = req.body;
@@ -68,7 +68,9 @@ app.post('/register-parcel', (req, res) => {
             console.error('Database error:', err);
             return res.status(500).json({ 
                 error: 'Database operation failed',
-                message: err.message
+                message: err.message || 'Unknown database error',
+                code: err.code,
+                sqlMessage: err.sqlMessage
             });
         }
         console.log('Parcel registered successfully:', { id, name });
@@ -79,7 +81,7 @@ app.post('/register-parcel', (req, res) => {
     });
 });
 
-// Parcel tracking endpoint with improved logging
+// Parcel tracking endpoint
 app.get('/track-parcel/:id', (req, res) => {
     const parcelID = req.params.id;
     console.log('Tracking request for parcel:', parcelID);
@@ -87,10 +89,12 @@ app.get('/track-parcel/:id', (req, res) => {
     const query = 'SELECT * FROM parcels WHERE id = ?';
     pool.query(query, [parcelID], (err, results) => {
         if (err) {
-            console.error('Database error:', err);
+            console.error('Database error details:', err);
             return res.status(500).json({ 
                 error: 'Database operation failed',
-                message: err.message
+                message: err.message || 'Unknown database error',
+                code: err.code,
+                sqlMessage: err.sqlMessage
             });
         }
         

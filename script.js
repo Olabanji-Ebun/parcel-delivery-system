@@ -9,13 +9,12 @@ document.addEventListener('DOMContentLoaded', function() {
 // Submit parcel
 async function submitParcel(event) {
     event.preventDefault();
-    
+
     try {
         const response = await fetch('https://parcel-delivery-system-zzsz.onrender.com/register-parcel', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                id: document.getElementById('parcel-id').value.trim(),
                 name: document.getElementById('parcel-name').value.trim(),
                 description: document.getElementById('parcel-description').value.trim()
             })
@@ -23,8 +22,8 @@ async function submitParcel(event) {
 
         if (!response.ok) throw new Error(await response.text());
         const data = await response.json();
-        alert('Success: ' + data.message);
-        event.target.reset();
+        alert('Success: Parcel registered successfully! Your parcel ID is: ' + data.parcelId);
+        event.target.reset();  // Reset the form after successful submission
     } catch (error) {
         console.error('Submission error:', error);
         alert('Failed: ' + error.message);
@@ -52,7 +51,8 @@ function displayParcelData(data) {
     const result = `
       Parcel ID: ${data.id}\n
       Name: ${data.name}\n
-      Description: ${data.description || 'N/A'}
+      Description: ${data.description || 'N/A'}\n
+      Status: ${data.status || 'Unknown'}
     `;
     alert(result);
 }

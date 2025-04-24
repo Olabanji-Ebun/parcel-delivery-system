@@ -1,5 +1,5 @@
 const express = require('express');
-const mysql = require('mysql2');
+const { Client } = require('pg');
 const cors = require('cors');
 require('dotenv').config();
 
@@ -16,63 +16,60 @@ app.use(cors({
     allowedHeaders: ['Content-Type'],
 }));
 
-// MySQL connection pool
-const pool = mysql.createPool({
-    host: process.env.DB_HOST || 'localhost',
-    user: process.env.DB_USER || 'root',
+// PostgreSQL connection pool
+const client = new Client({
+    host: process.env.DB_HOST,
+    user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME || 'parcel_delivery',
-    waitForConnections: true,
-    connectionLimit: 10,
-    queueLimit: 0
+    database: process.env.DB_NAME,
+    port: process.env.DB_PORT || 5432,
 });
 
-pool.on('connection', () => {
-    console.log('New database connection established');
-});
-
-pool.on('error', (err) => {
-    console.error('Database pool error:', err);
-});
+client.connect()
+  .then(() => {
+    console.log("Connected to PostgreSQL");
+  })
+  .catch((err) => {
+    console.error("Error connecting to PostgreSQL:", err.stack);
+  });
 
 // ✅ Root route for Render health check or info
 app.get('/', (req, res) => {
     res.send('Parcel Delivery API is running.');
 });
 
-// Optional: Redirect to frontend if desired
-// app.get('/', (req, res) => res.redirect('https://olabanji-ebun.github.io/'));
-
-// Health check
+// Health check route
 app.get('/health', (req, res) => {
-    pool.query('SELECT 1', (err) => {
+    client.query('SELECT 1', (err) => {
         if (err) return res.status(500).json({ status: 'unhealthy', error: err.message });
         res.status(200).json({ status: 'healthy' });
     });
 });
 
-// Register parcel
+// Register parcel route
 app.post('/register-parcel', (req, res) => {
-    const { id, name, description } = req.body;
-    if (!id || !name) return res.status(400).json({ error: 'Missing required fields' });
+    const { name, description } = req.body;
+    if (!name) return res.status(400).json({ error: 'Missing required fields' });
 
-    const query = 'INSERT INTO parcels (id, name, description) VALUES (?, ?, ?)';
-    pool.query(query, [id, name, description], (err) => {
+    const query = 'INSERT INTO parcels (name, description) VALUES ($1, $2) RETURNING id';
+    client.query(query, [name, description], (err, result) => {
         if (err) return res.status(500).json({ error: 'Database error', message: err.message });
-        res.status(200).json({ message: 'Parcel registered successfully!', parcelId: id });
+
+        const parcelId = result.rows[0].id; // Get the auto-generated id
+        res.status(200).json({ message: 'Parcel registered successfully!', parcelId });
     });
 });
 
-// Track parcel
+// Track parcel route
 app.get('/track-parcel/:id', (req, res) => {
     const parcelID = req.params.id;
 
-    const query = 'SELECT * FROM parcels WHERE id = ?';
-    pool.query(query, [parcelID], (err, results) => {
+    const query = 'SELECT * FROM parcels WHERE id = $1';
+    client.query(query, [parcelID], (err, results) => {
         if (err) return res.status(500).json({ error: 'Database error', message: err.message });
 
-        if (results.length > 0) {
-            res.status(200).json(results[0]);
+        if (results.rows.length > 0) {
+            res.status(200).json(results.rows[0]);
         } else {
             res.status(404).json({ message: 'Parcel not found', suggestion: 'Please check the tracking number' });
         }

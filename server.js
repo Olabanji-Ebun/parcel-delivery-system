@@ -21,14 +21,23 @@ const client = new Client({
     password: process.env.DB_PASSWORD,
     database: process.env.DB_NAME,
     port: process.env.DB_PORT || 5432,
+    ssl: {
+        rejectUnauthorized: false
+    }
 });
 
 client.connect()
   .then(() => {
-    console.log("Connected to PostgreSQL");
+    console.log("Connected to PostgreSQL successfully");
   })
   .catch((err) => {
-    console.error("Error connecting to PostgreSQL:", err.stack);
+    console.error("Error connecting to PostgreSQL:", err.message);
+    console.error("Connection details:", {
+      host: process.env.DB_HOST,
+      user: process.env.DB_USER,
+      database: process.env.DB_NAME,
+      port: process.env.DB_PORT || 5432
+    });
   });
 
 // ✅ Root route for Render health check or info
@@ -39,8 +48,30 @@ app.get('/', (req, res) => {
 // Health check route
 app.get('/health', (req, res) => {
     client.query('SELECT 1', (err) => {
-        if (err) return res.status(500).json({ status: 'unhealthy', error: err.message });
-        res.status(200).json({ status: 'healthy' });
+        if (err) {
+            console.error('Database health check failed:', err.message);
+            return res.status(500).json({ 
+                status: 'unhealthy', 
+                error: err.message,
+                database: 'disconnected'
+            });
+        }
+        res.status(200).json({ 
+            status: 'healthy',
+            database: 'connected',
+            timestamp: new Date().toISOString()
+        });
+    });
+});
+
+// Database connection check route
+app.get('/db-status', (req, res) => {
+    res.json({
+        connected: !client.ended,
+        host: process.env.DB_HOST,
+        database: process.env.DB_NAME,
+        user: process.env.DB_USER,
+        port: process.env.DB_PORT || 5432
     });
 });
 

@@ -3,13 +3,21 @@ services:
     name: parcel-backend
     env: node
     buildCommand: npm install
-    startCommand: node server.js
+    startCommand: npm start
     envVars:
       - key: DB_HOST
-        value: localhost  # Or your remote MySQL host if not using local
+        value: dpg-d1c6h96uk2gs73adsj8g-a.oregon-postgres.render.com
       - key: DB_USER
-        value: root       # Or your specific MySQL username
+        value: parcel_delivery_db_5tof_user
       - key: DB_PASSWORD
-        value: A1&2y28o0#6ebu%n # Plain text password
+        value: 8Z5R7xSu3DKBj0IUy0JPadxhJINHcEJ0
       - key: DB_NAME
-        value: parcel_delivery
+        value: parcel_delivery_db_5tof
+      - key: DB_PORT
+        value: 5432
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: CORS_ORIGIN
+        value: "*"

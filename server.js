@@ -8,12 +8,10 @@ app.use(express.json());
 
 // CORS configuration
 app.use(cors({
-    origin: [
-        'https://olabanji-ebun.github.io',
-        'http://localhost:3000'
-    ],
+    origin: true, // Allow all origins for development
     methods: ['GET', 'POST'],
     allowedHeaders: ['Content-Type'],
+    credentials: true
 }));
 
 // PostgreSQL connection pool

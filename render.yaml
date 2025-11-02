@@ -5,19 +5,54 @@ services:
     buildCommand: npm install
     startCommand: npm start
     envVars:
+      # Database Configuration
       - key: DB_HOST
-        value: dpg-d1c6h96uk2gs73adsj8g-a.oregon-postgres.render.com
+        value: dpg-d43qa3jipnbc73c7jt4g-a.oregon-postgres.render.com
       - key: DB_USER
-        value: parcel_delivery_db_5tof_user
+        value: parcel_delivery_parcel_user
       - key: DB_PASSWORD
-        value: 8Z5R7xSu3DKBj0IUy0JPadxhJINHcEJ0
+        value: kMmz1SPlgvkMBtKPwq58O579D71Ip1Je
       - key: DB_NAME
-        value: parcel_delivery_db_5tof
+        value: parcel_delivery_parcel
       - key: DB_PORT
         value: 5432
+      
+      # Server Configuration
       - key: NODE_ENV
         value: production
       - key: PORT
         value: 10000
+      
+      # CORS Configuration
       - key: CORS_ORIGIN
         value: "*"
+      
+      # Application Configuration
+      - key: APP_NAME
+        value: parcel-delivery-system
+      - key: API_VERSION
+        value: v1
+      - key: LOG_LEVEL
+        value: info
+      
+      # Security (Optional - for future use)
+      # - key: JWT_SECRET
+      #   value: your-jwt-secret-key-here
+      # - key: SESSION_SECRET
+      #   value: your-session-secret-here
+      
+      # Email Service (Optional - for future notifications)
+      # - key: SMTP_HOST
+      #   value: smtp.gmail.com
+      # - key: SMTP_PORT
+      #   value: 587
+      # - key: SMTP_USER
+      #   value: your-email@gmail.com
+      # - key: SMTP_PASSWORD
+      #   value: your-email-password
+      
+      # Rate Limiting (Optional)
+      # - key: RATE_LIMIT_WINDOW
+      #   value: 15
+      # - key: RATE_LIMIT_MAX_REQUESTS
+      #   value: 100

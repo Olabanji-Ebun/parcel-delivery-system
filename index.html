@@ -12,6 +12,8 @@
         <h1>Parcel Delivery System</h1>
     </header>
     <main>
+        <div id="message-container"></div>
+
         <section id="parcel-registration">
             <h2>Register a Parcel</h2>
             <form id="parcel-form">
@@ -22,6 +24,7 @@
                 <button type="submit" id="submit-parcel">Submit</button>
             </form>
         </section>
+
         <section id="parcel-tracking">
             <h2>Track a Parcel</h2>
             <form id="track-parcel-form">
@@ -29,6 +32,15 @@
                 <input type="text" id="tracking-number" name="tracking-number"><br><br>
                 <button type="submit" id="track-parcel">Track</button>
             </form>
+        </section>
+
+        <section id="all-parcels">
+            <h2>All Parcels</h2>
+            <button id="refresh-parcels">Refresh List</button>
+            <div id="parcels-list">
+                <!-- Parcels will be loaded here -->
+                <p>Loading parcels...</p>
+            </div>
         </section>
     </main>
     <script src="script.js"></script>

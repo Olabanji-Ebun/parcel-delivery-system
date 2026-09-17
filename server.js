@@ -1,6 +1,6 @@
 const express = require('express');
-const { Client } = require('pg');
 const cors = require('cors');
+const db = require('./db');
 require('dotenv').config();
 
 const app = express();
@@ -9,28 +9,15 @@ app.use(express.json());
 // CORS configuration
 app.use(cors({
     origin: true, // Allow all origins for development
-    methods: ['GET', 'POST'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
     allowedHeaders: ['Content-Type'],
     credentials: true
 }));
 
-// PostgreSQL connection pool
-const client = new Client({
-    host: process.env.DB_HOST,
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME,
-    port: process.env.DB_PORT || 5432,
-    ssl: {
-        rejectUnauthorized: false
-    }
-});
-
 // Initialize database - create table if it doesn't exist
 async function initializeDatabase() {
     try {
-        await client.connect();
-        console.log("Connected to PostgreSQL successfully");
+        console.log("Checking database connection...");
         
         // Create parcels table if it doesn't exist
         const createTableQuery = `
@@ -43,12 +30,12 @@ async function initializeDatabase() {
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         `;
-        await client.query(createTableQuery);
+        await db.query(createTableQuery);
         console.log("Parcels table verified/created successfully");
         
         // Create index if it doesn't exist
         const createIndexQuery = `CREATE INDEX IF NOT EXISTS idx_parcels_id ON parcels(id);`;
-        await client.query(createIndexQuery);
+        await db.query(createIndexQuery);
         console.log("Index verified/created successfully");
     } catch (err) {
         console.error("Error connecting to PostgreSQL:", err.message);
@@ -64,7 +51,7 @@ async function initializeDatabase() {
 // Initialize database on startup
 initializeDatabase();
 
-// ✅ Root route for Render health check or info
+// ✅ Root route
 app.get('/', (req, res) => {
     const appName = process.env.APP_NAME || 'parcel-delivery-system';
     const apiVersion = process.env.API_VERSION || 'v1';
@@ -77,63 +64,106 @@ app.get('/', (req, res) => {
 });
 
 // Health check route
-app.get('/health', (req, res) => {
-    client.query('SELECT 1', (err) => {
-        if (err) {
-            console.error('Database health check failed:', err.message);
-            return res.status(500).json({ 
-                status: 'unhealthy', 
-                error: err.message,
-                database: 'disconnected'
-            });
-        }
+app.get('/health', async (req, res) => {
+    try {
+        await db.query('SELECT 1');
         res.status(200).json({ 
             status: 'healthy',
             database: 'connected',
             timestamp: new Date().toISOString()
         });
-    });
+    } catch (err) {
+        console.error('Database health check failed:', err.message);
+        res.status(500).json({
+            status: 'unhealthy',
+            error: err.message,
+            database: 'disconnected'
+        });
+    }
 });
 
-// Database connection check route
-app.get('/db-status', (req, res) => {
-    res.json({
-        connected: !client.ended,
-        host: process.env.DB_HOST,
-        database: process.env.DB_NAME,
-        user: process.env.DB_USER,
-        port: process.env.DB_PORT || 5432
-    });
+// Get all parcels
+app.get('/parcels', async (req, res) => {
+    try {
+        const result = await db.query('SELECT * FROM parcels ORDER BY created_at DESC');
+        res.json(result.rows);
+    } catch (err) {
+        res.status(500).json({ error: 'Database error', message: err.message });
+    }
 });
 
 // Register parcel route
-app.post('/register-parcel', (req, res) => {
+app.post('/register-parcel', async (req, res) => {
     const { name, description } = req.body;
-    if (!name) return res.status(400).json({ error: 'Missing required fields' });
+    if (!name || typeof name !== 'string' || name.trim() === '') {
+        return res.status(400).json({ error: 'Valid name is required' });
+    }
 
-    const query = 'INSERT INTO parcels (name, description) VALUES ($1, $2) RETURNING id';
-    client.query(query, [name, description], (err, result) => {
-        if (err) return res.status(500).json({ error: 'Database error', message: err.message });
-
-        const parcelId = result.rows[0].id; // Get the auto-generated id
+    try {
+        const query = 'INSERT INTO parcels (name, description) VALUES ($1, $2) RETURNING id';
+        const result = await db.query(query, [name.trim(), description ? description.trim() : '']);
+        const parcelId = result.rows[0].id;
         res.status(200).json({ message: 'Parcel registered successfully!', parcelId });
-    });
+    } catch (err) {
+        res.status(500).json({ error: 'Database error', message: err.message });
+    }
 });
 
 // Track parcel route
-app.get('/track-parcel/:id', (req, res) => {
+app.get('/track-parcel/:id', async (req, res) => {
     const parcelID = req.params.id;
 
-    const query = 'SELECT * FROM parcels WHERE id = $1';
-    client.query(query, [parcelID], (err, results) => {
-        if (err) return res.status(500).json({ error: 'Database error', message: err.message });
+    try {
+        const query = 'SELECT * FROM parcels WHERE id = $1';
+        const result = await db.query(query, [parcelID]);
 
-        if (results.rows.length > 0) {
-            res.status(200).json(results.rows[0]);
+        if (result.rows.length > 0) {
+            res.status(200).json(result.rows[0]);
         } else {
             res.status(404).json({ message: 'Parcel not found', suggestion: 'Please check the tracking number' });
         }
-    });
+    } catch (err) {
+        res.status(500).json({ error: 'Database error', message: err.message });
+    }
+});
+
+// Update parcel status
+app.put('/parcels/:id/status', async (req, res) => {
+    const parcelID = req.params.id;
+    const { status } = req.body;
+
+    if (!status) return res.status(400).json({ error: 'Status is required' });
+
+    try {
+        const query = 'UPDATE parcels SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *';
+        const result = await db.query(query, [status, parcelID]);
+
+        if (result.rows.length > 0) {
+            res.status(200).json({ message: 'Status updated successfully', parcel: result.rows[0] });
+        } else {
+            res.status(404).json({ message: 'Parcel not found' });
+        }
+    } catch (err) {
+        res.status(500).json({ error: 'Database error', message: err.message });
+    }
+});
+
+// Delete parcel
+app.delete('/parcels/:id', async (req, res) => {
+    const parcelID = req.params.id;
+
+    try {
+        const query = 'DELETE FROM parcels WHERE id = $1 RETURNING id';
+        const result = await db.query(query, [parcelID]);
+
+        if (result.rows.length > 0) {
+            res.status(200).json({ message: 'Parcel deleted successfully' });
+        } else {
+            res.status(404).json({ message: 'Parcel not found' });
+        }
+    } catch (err) {
+        res.status(500).json({ error: 'Database error', message: err.message });
+    }
 });
 
 // Error middleware
@@ -142,13 +172,17 @@ app.use((err, req, res, next) => {
     res.status(500).json({ error: 'Internal Server Error' });
 });
 
-const PORT = process.env.PORT || 3000;
-const appName = process.env.APP_NAME || 'parcel-delivery-system';
-const nodeEnv = process.env.NODE_ENV || 'development';
+if (require.main === module) {
+    const PORT = process.env.PORT || 3000;
+    const appName = process.env.APP_NAME || 'parcel-delivery-system';
+    const nodeEnv = process.env.NODE_ENV || 'development';
 
-app.listen(PORT, () => {
-    console.log(`🚀 ${appName} server is running`);
-    console.log(`📍 Port: ${PORT}`);
-    console.log(`🌍 Environment: ${nodeEnv}`);
-    console.log(`🔗 Server running at http://localhost:${PORT}`);
-});
+    app.listen(PORT, () => {
+        console.log(`🚀 ${appName} server is running`);
+        console.log(`📍 Port: ${PORT}`);
+        console.log(`🌍 Environment: ${nodeEnv}`);
+        console.log(`🔗 Server running at http://localhost:${PORT}`);
+    });
+}
+
+module.exports = app;
